@@ -16,7 +16,12 @@ const convertToSrt = (xml) => {
         const formatTime = (time) => {
             const date = new Date(null);
             date.setSeconds(time);
-            return date.toISOString().substr(11, 12).replace('.', ',');
+            // This is the correct way to format time for SRT
+            const hours = String(date.getUTCHours()).padStart(2, '0');
+            const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+            const seconds = String(date.getUTCSeconds()).padStart(2, '0');
+            const milliseconds = String(time.toFixed(3).split('.')[1] || '000').padStart(3, '0');
+            return `${hours}:${minutes}:${seconds},${milliseconds}`;
         };
 
         const startTime = formatTime(startSeconds);
@@ -74,31 +79,41 @@ module.exports = async (req, res) => {
         };
 
         for (const track of captionTracks) {
-            // Fetch the XML content from YouTube
-            const { data: xmlData } = await axios.get(track.baseUrl);
+            try {
+                // Fetch the XML content from YouTube
+                const { data: xmlData } = await axios.get(track.baseUrl);
 
-            // Parse XML to JavaScript object
-            const parser = new xml2js.Parser();
-            const result = await parser.parseStringPromise(xmlData);
+                // Parse XML to JavaScript object
+                const parser = new xml2js.Parser();
+                const result = await parser.parseStringPromise(xmlData);
 
-            // Convert to SRT and TXT formats
-            const srtContent = convertToSrt(result);
-            const txtContent = convertToTxt(result);
+                // Convert to SRT and TXT formats
+                const srtContent = convertToSrt(result);
+                const txtContent = convertToTxt(result);
 
-            const subtitle = {
-                lang: track.name.simpleText,
-                formats: {
-                    srt: srtContent,
-                    txt: txtContent
+                const subtitle = {
+                    lang: track.name.simpleText,
+                    formats: {
+                        srt: srtContent,
+                        txt: txtContent
+                    }
+                };
+
+                // Distinguish between original and translated captions
+                if (track.isTranslatable) {
+                    subtitlesData.translations.push(subtitle);
+                } else {
+                    subtitlesData.originals.push(subtitle);
                 }
-            };
-
-            // Distinguish between original and translated captions
-            if (track.isTranslatable) {
-                subtitlesData.translations.push(subtitle);
-            } else {
-                subtitlesData.originals.push(subtitle);
+            } catch (trackError) {
+                console.error(`Error processing track for language ${track.languageCode}:`, trackError);
+                // Continue to the next track even if one fails
             }
+        }
+
+        if (subtitlesData.originals.length === 0 && subtitlesData.translations.length === 0) {
+            res.status(404).json({ error: 'No subtitles could be processed for this video.' });
+            return;
         }
 
         res.status(200).json(subtitlesData);
