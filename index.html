@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Subtitle Downloader</title>
+    <!-- Use Tailwind CSS for a modern, responsive design -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #fff;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300">
+
+    <div class="container mx-auto p-4 sm:p-8">
+        <!-- Header Section -->
+        <header class="text-center my-8">
+            <h1 class="text-3xl sm:text-4xl font-extrabold text-blue-600 dark:text-blue-400">YouTube Subtitle Downloader</h1>
+            <p class="mt-2 text-lg text-gray-600 dark:text-gray-400">Enter a YouTube video URL to find and download original and translated subtitles.</p>
+        </header>
+
+        <!-- Input Section -->
+        <section class="max-w-2xl mx-auto mb-8 p-6 bg-white dark:bg-gray-800 rounded-2xl shadow-xl transition-all duration-300">
+            <div class="flex flex-col sm:flex-row gap-4 items-center">
+                <input
+                    type="url"
+                    id="videoUrlInput"
+                    placeholder="Paste YouTube video URL here..."
+                    class="flex-1 p-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition-all duration-200"
+                    required
+                >
+                <button
+                    id="searchButton"
+                    class="w-full sm:w-auto px-6 py-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl shadow-lg transition-all duration-200 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                    Get Subtitles
+                </button>
+            </div>
+        </section>
+
+        <!-- Loading & Message Section -->
+        <section id="statusSection" class="max-w-2xl mx-auto mt-8 hidden">
+            <div id="loadingIndicator" class="flex items-center justify-center p-4">
+                <div class="loading-spinner"></div>
+                <span class="ml-4 text-lg font-medium text-gray-600 dark:text-gray-400">Fetching subtitles...</span>
+            </div>
+            <div id="messageBox" class="p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 rounded-xl shadow-md border border-red-200 dark:border-red-800 hidden">
+                <p id="messageText"></p>
+            </div>
+        </section>
+
+        <!-- Results Section -->
+        <main id="resultsContainer" class="max-w-4xl mx-auto mt-8 hidden">
+
+            <!-- Original Subtitles -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-xl transition-all duration-300 mb-8">
+                <h2 class="text-2xl sm:text-3xl font-bold mb-4 text-gray-800 dark:text-gray-200">Original Subtitles</h2>
+                <div id="originalSubtitlesList" class="space-y-4">
+                    <!-- Dynamic content goes here -->
+                </div>
+            </div>
+
+            <!-- Translated Subtitles -->
+            <div class="bg-white dark:bg-gray-800 p-6 rounded-2xl shadow-xl transition-all duration-300">
+                <h2 class="text-2xl sm:text-3xl font-bold mb-4 text-gray-800 dark:text-gray-200">Translated Subtitles (Auto-generated from English)</h2>
+                <div id="translatedSubtitlesList" class="space-y-4">
+                    <!-- Dynamic content goes here -->
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        // All JavaScript is self-contained in this script tag.
+
+        // Get DOM elements
+        const videoUrlInput = document.getElementById('videoUrlInput');
+        const searchButton = document.getElementById('searchButton');
+        const statusSection = document.getElementById('statusSection');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const messageBox = document.getElementById('messageBox');
+        const messageText = document.getElementById('messageText');
+        const resultsContainer = document.getElementById('resultsContainer');
+        const originalSubtitlesList = document.getElementById('originalSubtitlesList');
+        const translatedSubtitlesList = document.getElementById('translatedSubtitlesList');
+
+        // Event listener for the search button
+        searchButton.addEventListener('click', async () => {
+            const url = videoUrlInput.value;
+            // Clear previous results and messages
+            clearResults();
+            hideMessage();
+
+            if (!url) {
+                showMessage("Please enter a YouTube video URL.", "error");
+                return;
+            }
+
+            try {
+                showLoading();
+
+                // ------------------------------------------------------------------------------------------------
+                // This is the new, functional part. It makes a request to a Vercel serverless function.
+                // The API endpoint below is the path to the backend file you will create.
+                // ------------------------------------------------------------------------------------------------
+                const response = await fetch(`/api/subtitles?url=${encodeURIComponent(url)}`);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || "Failed to fetch subtitles from the backend.");
+                }
+
+                // Populate the UI with the data from the API
+                if (data.original) {
+                    populateSubtitles(data.original, originalSubtitlesList);
+                } else {
+                    showMessage("No original subtitles found for this video.", "info");
+                }
+
+                if (data.translations && data.translations.length > 0) {
+                    data.translations.forEach(translation => {
+                        populateSubtitles(translation, translatedSubtitlesList);
+                    });
+                } else {
+                    showMessage("No automatic translations found for this video.", "info");
+                }
+
+
+                hideLoading();
+                resultsContainer.classList.remove('hidden');
+
+            } catch (error) {
+                console.error("Error fetching subtitles:", error);
+                hideLoading();
+                showMessage("Failed to fetch subtitles. Please check the URL and try again. Error: " + error.message, "error");
+            }
+        });
+
+        // Function to populate the subtitle list UI
+        function populateSubtitles(data, container) {
+            const subtitleItem = document.createElement('div');
+            subtitleItem.className = "flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-gray-100 dark:bg-gray-700 rounded-xl transition-all duration-200";
+
+            const lang = document.createElement('span');
+            lang.className = "text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2 sm:mb-0";
+            lang.textContent = data.lang;
+
+            const downloadButtons = document.createElement('div');
+            downloadButtons.className = "flex gap-2";
+
+            // Loop through each format and create a button
+            for (const format in data.formats) {
+                const button = document.createElement('button');
+                button.className = "px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors duration-200";
+                button.textContent = `Download .${format}`;
+                button.addEventListener('click', () => {
+                    downloadFile(data.lang, format, data.formats[format]);
+                });
+                downloadButtons.appendChild(button);
+            }
+
+            subtitleItem.appendChild(lang);
+            subtitleItem.appendChild(downloadButtons);
+            container.appendChild(subtitleItem);
+        }
+
+        // Function to create and trigger a file download
+        function downloadFile(lang, format, content) {
+            const blob = new Blob([content], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `${lang}_subtitle.${format}`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showMessage(`Downloading ${lang} .${format} subtitle.`, "success");
+        }
+
+        // UI helper functions
+        function showLoading() {
+            searchButton.disabled = true;
+            searchButton.innerHTML = `<div class="loading-spinner"></div>`;
+            statusSection.classList.remove('hidden');
+            loadingIndicator.classList.remove('hidden');
+        }
+
+        function hideLoading() {
+            searchButton.disabled = false;
+            searchButton.innerHTML = `Get Subtitles`;
+            loadingIndicator.classList.add('hidden');
+        }
+
+        function showMessage(text, type = "info") {
+            messageText.textContent = text;
+            messageBox.classList.remove('hidden');
+            statusSection.classList.remove('hidden');
+            // Customize color based on type (e.g., error, success)
+            if (type === "error") {
+                messageBox.classList.remove('bg-green-100', 'text-green-700', 'border-green-200', 'dark:bg-green-900', 'dark:text-green-300', 'dark:border-green-800');
+                messageBox.classList.add('bg-red-100', 'text-red-700', 'border-red-200', 'dark:bg-red-900', 'dark:text-red-300', 'dark:border-red-800');
+            } else if (type === "success") {
+                messageBox.classList.remove('bg-red-100', 'text-red-700', 'border-red-200', 'dark:bg-green-900', 'dark:text-green-300', 'dark:border-green-800');
+                messageBox.classList.add('bg-green-100', 'text-green-700', 'border-green-200', 'dark:bg-green-900', 'dark:text-green-300', 'dark:border-green-800');
+            }
+        }
+
+        function hideMessage() {
+            messageBox.classList.add('hidden');
+        }
+
+        function clearResults() {
+            originalSubtitlesList.innerHTML = '';
+            translatedSubtitlesList.innerHTML = '';
+            resultsContainer.classList.add('hidden');
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "youtube-sub-downloader-backend",
+  "version": "1.0.0",
+  "description": "A Vercel serverless function to fetch YouTube subtitles.",
+  "main": "api/subtitles.js",
+  "scripts": {
+    "start": "node api/subtitles.js"
+  },
+  "dependencies": {
+    "ytdl-core": "^4.11.5",
+    "ytsr": "^3.8.3",
+    "axios": "^1.7.2"
+  }
+}
