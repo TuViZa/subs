@@ -1,4 +1,26 @@
 // File: api/subtitles.js
+//
+// IMPORTANT: To make this work on Vercel, you need a 'package.json' file in your project root.
+// It should contain the following dependencies:
+//
+// {
+//   "name": "youtube-sub-downloader-backend",
+//   "version": "1.0.0",
+//   "description": "A Vercel serverless function to fetch YouTube subtitles.",
+//   "main": "api/subtitles.js",
+//   "scripts": {
+//     "start": "node api/subtitles.js"
+//   },
+//   "dependencies": {
+//     "ytdl-core": "^4.11.5",
+//     "axios": "^1.7.2",
+//     "xml2js": "^0.6.2"
+//   }
+// }
+//
+// Ensure this file and your index.html are in the project root,
+// and the 'subtitles.js' file is inside an 'api' directory.
+//
 
 const ytdl = require('ytdl-core');
 const axios = require('axios');
