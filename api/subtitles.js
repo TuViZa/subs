@@ -2,6 +2,42 @@
 
 const ytdl = require('ytdl-core');
 const axios = require('axios');
+const xml2js = require('xml2js');
+
+// Helper function to convert a YouTube XML subtitle to SRT format
+const convertToSrt = (xml) => {
+    let srt = '';
+    let index = 1;
+    xml.transcript.text.forEach(line => {
+        const startSeconds = parseFloat(line.$.start);
+        const durationSeconds = parseFloat(line.$.dur);
+        const endSeconds = startSeconds + durationSeconds;
+
+        const formatTime = (time) => {
+            const date = new Date(null);
+            date.setSeconds(time);
+            return date.toISOString().substr(11, 12).replace('.', ',');
+        };
+
+        const startTime = formatTime(startSeconds);
+        const endTime = formatTime(endSeconds);
+        const text = line._.replace(/<[^>]*>/g, '').replace(/(\n)/gm, ' ');
+
+        srt += `${index}\n${startTime} --> ${endTime}\n${text}\n\n`;
+        index++;
+    });
+    return srt.trim();
+};
+
+// Helper function to convert a YouTube XML subtitle to TXT format
+const convertToTxt = (xml) => {
+    let txt = '';
+    xml.transcript.text.forEach(line => {
+        const text = line._.replace(/<[^>]*>/g, '').replace(/(\n)/gm, ' ');
+        txt += text + ' ';
+    });
+    return txt.trim();
+};
 
 // Vercel Serverless Function entry point
 module.exports = async (req, res) => {
@@ -23,7 +59,6 @@ module.exports = async (req, res) => {
             return;
         }
 
-        // Get video info to find subtitle tracks
         const info = await ytdl.getInfo(url);
         const videoDetails = info.videoDetails;
         const captionTracks = videoDetails.subtitles;
@@ -34,68 +69,36 @@ module.exports = async (req, res) => {
         }
 
         const subtitlesData = {
-            original: null,
+            originals: [],
             translations: []
         };
 
-        // Helper function to fetch and format subtitles
-        const fetchSubtitles = async (track, format) => {
-            const response = await axios.get(track.url);
-            let content = response.data;
-            if (format === 'txt') {
-                // Simplified conversion to plain text
-                content = content.replace(/<\/?(c|p|s)[^>]*?>/g, '').replace(/\s+/g, ' ').trim();
-            }
-            return content;
-        };
+        for (const track of captionTracks) {
+            // Fetch the XML content from YouTube
+            const { data: xmlData } = await axios.get(track.baseUrl);
 
-        // Find the original English subtitle track
-        const englishTrack = captionTracks.find(track => track.languageCode === 'en' && !track.isTranslatable);
-        if (englishTrack) {
-            subtitlesData.original = {
-                lang: englishTrack.name.simpleText,
+            // Parse XML to JavaScript object
+            const parser = new xml2js.Parser();
+            const result = await parser.parseStringPromise(xmlData);
+
+            // Convert to SRT and TXT formats
+            const srtContent = convertToSrt(result);
+            const txtContent = convertToTxt(result);
+
+            const subtitle = {
+                lang: track.name.simpleText,
                 formats: {
-                    // For a full implementation, you would need to parse the XML from YouTube and convert it to SRT.
-                    // This is a simplified example.
-                    srt: await fetchSubtitles(englishTrack, 'srt'),
-                    txt: await fetchSubtitles(englishTrack, 'txt')
+                    srt: srtContent,
+                    txt: txtContent
                 }
             };
-        }
 
-        // Generate translated subtitles (simulated)
-        const translatableTracks = captionTracks.filter(track => track.isTranslatable);
-
-        // This is where you would use a translation API for real. For this example, we simulate it.
-        const mockTranslations = [
-            { code: 'es', name: 'Spanish' },
-            { code: 'fr', name: 'French' },
-            { code: 'hi', name: 'Hindi' }
-        ];
-
-        for (const translation of mockTranslations) {
-             // In a real app, you would make an API call to translate the English text.
-             // For this example, we use a simple placeholder.
-            const translatedSrt = `Translated to ${translation.name} from English.
-            1
-            00:00:01,000 --> 00:00:04,500
-            Translated: This is the first subtitle line.
-
-            2
-            00:00:05,000 --> 00:00:08,000
-            Translated: This is the second subtitle line.`;
-
-            const translatedTxt = `Translated to ${translation.name} from English.
-            Translated: This is the first subtitle line.
-            Translated: This is the second subtitle line.`;
-
-            subtitlesData.translations.push({
-                lang: translation.name,
-                formats: {
-                    srt: translatedSrt,
-                    txt: translatedTxt
-                }
-            });
+            // Distinguish between original and translated captions
+            if (track.isTranslatable) {
+                subtitlesData.translations.push(subtitle);
+            } else {
+                subtitlesData.originals.push(subtitle);
+            }
         }
 
         res.status(200).json(subtitlesData);
